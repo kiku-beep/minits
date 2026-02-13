@@ -1,0 +1,8 @@
+{
+  "name": "meeting-minutes-generator",
+  "private": true,
+  "dependencies": {
+    "openai": "^4.0.0",
+    "@google/genai": "^0.1.0"
+  }
+}

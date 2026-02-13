@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>議事録ジェネレーター</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>議事録ジェネレーター</h1>
+      <p class="subtitle">音声ファイルをアップロードすると、自動で議事録を作成します</p>
+    </header>
+
+    <!-- Upload Area -->
+    <section id="upload-section" class="card">
+      <div id="drop-zone" class="drop-zone">
+        <div class="drop-zone-icon">🎙️</div>
+        <p class="drop-zone-text">音声ファイルをドラッグ＆ドロップ</p>
+        <p class="drop-zone-hint">または</p>
+        <label class="file-button">
+          ファイルを選択
+          <input type="file" id="file-input" accept="audio/*,video/mp4,video/webm,.m4a,.mp3,.wav,.ogg,.webm,.flac" hidden>
+        </label>
+        <p class="drop-zone-formats">対応形式: MP3, WAV, M4A, OGG, WebM, FLAC, MP4</p>
+      </div>
+
+      <!-- File Preview -->
+      <div id="file-preview" class="file-preview hidden">
+        <div class="file-info">
+          <span class="file-icon">📄</span>
+          <div>
+            <p id="file-name" class="file-name"></p>
+            <p id="file-size" class="file-size"></p>
+          </div>
+        </div>
+        <button id="remove-file" class="remove-button" title="ファイルを削除">✕</button>
+      </div>
+
+      <button id="generate-btn" class="generate-button hidden" disabled>
+        議事録を生成
+      </button>
+    </section>
+
+    <!-- Progress -->
+    <section id="progress-section" class="card hidden">
+      <div class="progress-bar-container">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <p id="progress-text" class="progress-text">処理中...</p>
+    </section>
+
+    <!-- Result -->
+    <section id="result-section" class="card hidden">
+      <div class="result-header">
+        <h2 id="result-title"></h2>
+        <div class="result-actions">
+          <button id="copy-btn" class="action-button" title="コピー">📋 コピー</button>
+          <button id="reset-btn" class="action-button" title="新しいファイル">🔄 新規</button>
+        </div>
+      </div>
+
+      <div id="result-content" class="result-content">
+        <!-- Summary -->
+        <div id="result-summary" class="result-block"></div>
+
+        <!-- Agenda -->
+        <div id="result-agenda" class="result-block hidden"></div>
+
+        <!-- Decisions -->
+        <div id="result-decisions" class="result-block hidden"></div>
+
+        <!-- Action Items -->
+        <div id="result-actions-list" class="result-block hidden"></div>
+
+        <!-- Discussion Points -->
+        <div id="result-discussion" class="result-block hidden"></div>
+      </div>
+
+      <!-- Transcript Toggle -->
+      <details class="transcript-details">
+        <summary>文字起こし全文を表示</summary>
+        <pre id="transcript-text" class="transcript-text"></pre>
+      </details>
+    </section>
+
+    <!-- Error -->
+    <section id="error-section" class="card error-card hidden">
+      <p id="error-text"></p>
+      <button id="error-retry" class="action-button">再試行</button>
+    </section>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>
