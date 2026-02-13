@@ -1,5 +1,5 @@
 {
-  "name": "meeting-minutes-generator",
+  "name": "minits",
   "private": true,
   "dependencies": {
     "openai": "^4.0.0",
