@@ -18,8 +18,16 @@
       <div id="recording-panel" class="recording-panel">
         <div class="recording-icon">🎙️</div>
         <p class="recording-description">
-          システム音声（画面共有）とマイクを同時に録音し、議事録を自動生成します
+          マイクで会議を録音し、議事録を自動生成します
         </p>
+
+        <div class="recording-mode">
+          <label class="mode-toggle">
+            <input type="checkbox" id="system-audio-toggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="mode-label">システム音声もキャプチャ（画面共有が必要）</span>
+        </div>
 
         <div id="recording-status" class="recording-status hidden">
           <span id="recording-indicator" class="recording-indicator"></span>
@@ -41,7 +49,7 @@
         <button id="stop-btn" class="stop-button hidden">録音を停止して議事録を生成</button>
 
         <p id="recording-hint" class="recording-hint">
-          「録音を開始」を押すと、画面共有の選択ダイアログが表示されます
+          マイクで会議音声を録音します
         </p>
       </div>
     </section>

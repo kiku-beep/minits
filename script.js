@@ -24,6 +24,9 @@ const resetBtn = document.getElementById("reset-btn");
 const errorSection = document.getElementById("error-section");
 const errorText = document.getElementById("error-text");
 const errorRetry = document.getElementById("error-retry");
+const systemAudioToggle = document.getElementById("system-audio-toggle");
+const systemMeterLabel = levelMeterContainer.querySelector(".level-meter-label");
+const systemMeterTrack = levelMeterContainer.querySelector(".level-meter-track");
 
 // --- State ---
 let mediaRecorder = null;
@@ -49,55 +52,67 @@ stopBtn.addEventListener("click", stopRecording);
 copyBtn.addEventListener("click", copyResult);
 resetBtn.addEventListener("click", resetAll);
 errorRetry.addEventListener("click", resetAll);
+systemAudioToggle.addEventListener("change", () => {
+  recordingHint.textContent = systemAudioToggle.checked
+    ? "「録音を開始」を押すと、画面共有の選択ダイアログが表示されます"
+    : "マイクで会議音声を録音します";
+});
 
 // ============================================================
 // Recording
 // ============================================================
 
 async function startRecording() {
+  const useSystemAudio = systemAudioToggle.checked;
+
   try {
-    // 1. Get display/system audio
-    displayStream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: true,
-    });
-
-    // Discard video track immediately
-    displayStream.getVideoTracks().forEach((t) => t.stop());
-
-    // Check if system audio was shared
-    if (displayStream.getAudioTracks().length === 0) {
-      displayStream.getTracks().forEach((t) => t.stop());
-      throw new Error(
-        "システム音声が共有されていません。画面共有ダイアログで「タブの音声を共有」にチェックを入れてください。"
-      );
-    }
-
-    // 2. Get microphone
+    // 1. Get audio sources
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    // 3. Mix with Web Audio API
     audioContext = new AudioContext();
     if (audioContext.state === "suspended") {
       await audioContext.resume();
     }
 
-    const systemSource = audioContext.createMediaStreamSource(displayStream);
-    const micSource = audioContext.createMediaStreamSource(micStream);
     const destination = audioContext.createMediaStreamDestination();
 
-    // Analysers for level meters
-    systemAnalyser = audioContext.createAnalyser();
-    systemAnalyser.fftSize = 256;
+    // Mic analyser (always active)
     micAnalyser = audioContext.createAnalyser();
     micAnalyser.fftSize = 256;
-
-    systemSource.connect(systemAnalyser);
-    systemAnalyser.connect(destination);
+    const micSource = audioContext.createMediaStreamSource(micStream);
     micSource.connect(micAnalyser);
     micAnalyser.connect(destination);
 
-    // 4. MediaRecorder on mixed stream
+    // System audio (optional)
+    if (useSystemAudio) {
+      displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+
+      displayStream.getVideoTracks().forEach((t) => t.stop());
+
+      if (displayStream.getAudioTracks().length === 0) {
+        displayStream.getTracks().forEach((t) => t.stop());
+        throw new Error(
+          "システム音声が共有されていません。画面共有ダイアログで「タブの音声を共有」にチェックを入れてください。"
+        );
+      }
+
+      systemAnalyser = audioContext.createAnalyser();
+      systemAnalyser.fftSize = 256;
+      const systemSource = audioContext.createMediaStreamSource(displayStream);
+      systemSource.connect(systemAnalyser);
+      systemAnalyser.connect(destination);
+
+      displayStream.getAudioTracks()[0].onended = () => {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          stopRecording();
+        }
+      };
+    }
+
+    // 2. MediaRecorder on mixed/mic stream
     recordedChunks = [];
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
@@ -117,21 +132,25 @@ async function startRecording() {
       showError("録音中にエラーが発生しました。");
     };
 
-    // Handle user clicking "Stop sharing" in browser chrome
-    displayStream.getAudioTracks()[0].onended = () => {
-      if (mediaRecorder && mediaRecorder.state === "recording") {
-        stopRecording();
-      }
-    };
-
     mediaRecorder.start(1000);
 
-    // 5. Update UI
+    // 3. Update UI
     recordBtn.classList.add("hidden");
     stopBtn.classList.remove("hidden");
     recordingStatus.classList.remove("hidden");
-    levelMeterContainer.classList.remove("hidden");
     recordingHint.classList.add("hidden");
+    systemAudioToggle.disabled = true;
+
+    // Show level meters — hide system meter row if mic-only
+    levelMeterContainer.classList.remove("hidden");
+    if (useSystemAudio) {
+      systemMeterLabel.classList.remove("hidden");
+      systemMeterTrack.classList.remove("hidden");
+    } else {
+      systemMeterLabel.classList.add("hidden");
+      systemMeterTrack.classList.add("hidden");
+    }
+
     startTimer();
     startLevelMeters();
   } catch (err) {
@@ -558,6 +577,7 @@ function resetAll() {
   levelMeterContainer.classList.add("hidden");
   recordingHint.classList.remove("hidden");
   recordingTimer.textContent = "00:00:00";
+  systemAudioToggle.disabled = false;
 
   uploadSection.classList.remove("hidden");
   progressSection.classList.add("hidden");
