@@ -92,6 +92,9 @@ async function startRecording() {
       displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: true,
+        preferCurrentTab: false,
+        selfBrowserSurface: "exclude",
+        systemAudio: "include",
       });
 
       displayStream.getVideoTracks().forEach((t) => t.stop());
