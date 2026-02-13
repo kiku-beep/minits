@@ -56,112 +56,88 @@ header h1 {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
-/* Drop Zone */
-.drop-zone {
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  padding: 48px 24px;
+/* Recording Panel */
+.recording-panel {
   text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  padding: 32px 24px;
 }
 
-.drop-zone:hover,
-.drop-zone.drag-over {
-  border-color: var(--accent);
-  background: rgba(0, 113, 227, 0.04);
-}
-
-.drop-zone-icon {
+.recording-icon {
   font-size: 48px;
   margin-bottom: 12px;
 }
 
-.drop-zone-text {
-  font-size: 17px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.drop-zone-hint {
+.recording-description {
   color: var(--text-secondary);
-  font-size: 13px;
-  margin-bottom: 12px;
+  font-size: 15px;
+  margin-bottom: 24px;
+  line-height: 1.6;
 }
 
-.file-button {
-  display: inline-block;
-  padding: 8px 20px;
-  background: var(--accent);
-  color: white;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s;
+/* Recording Status */
+.recording-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
 }
 
-.file-button:hover {
-  background: var(--accent-hover);
+.recording-indicator {
+  width: 12px;
+  height: 12px;
+  background: var(--error);
+  border-radius: 50%;
+  animation: pulse 1.2s ease-in-out infinite;
 }
 
-.drop-zone-formats {
-  color: var(--text-secondary);
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.recording-timer {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+}
+
+/* Level Meters */
+.level-meter-container {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 8px;
+  align-items: center;
+  max-width: 400px;
+  margin: 0 auto 24px;
+}
+
+.level-meter-label {
   font-size: 12px;
-  margin-top: 12px;
-}
-
-/* File Preview */
-.file-preview {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  background: #f9f9fb;
-  border-radius: 8px;
-  margin-top: 16px;
-}
-
-.file-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.file-icon {
-  font-size: 28px;
-}
-
-.file-name {
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.file-size {
   color: var(--text-secondary);
-  font-size: 13px;
+  text-align: right;
 }
 
-.remove-button {
-  background: none;
-  border: none;
-  font-size: 18px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+.level-meter-track {
+  height: 6px;
+  background: #e8e8ed;
+  border-radius: 3px;
+  overflow: hidden;
 }
 
-.remove-button:hover {
-  background: rgba(0,0,0,0.05);
+.level-meter-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--success);
+  border-radius: 3px;
+  transition: width 0.08s linear;
 }
 
-/* Generate Button */
-.generate-button {
-  display: block;
-  width: 100%;
-  margin-top: 16px;
-  padding: 14px;
+/* Record / Stop Buttons */
+.record-button {
+  display: inline-block;
+  padding: 14px 40px;
   background: var(--accent);
   color: white;
   border: none;
@@ -169,16 +145,34 @@ header h1 {
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
+  transition: background 0.2s;
 }
 
-.generate-button:hover:not(:disabled) {
+.record-button:hover {
   background: var(--accent-hover);
 }
 
-.generate-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.stop-button {
+  display: inline-block;
+  padding: 14px 40px;
+  background: var(--error);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.stop-button:hover {
+  background: #e0342b;
+}
+
+.recording-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-top: 16px;
 }
 
 /* Progress */
@@ -349,8 +343,8 @@ header h1 {
     font-size: 22px;
   }
 
-  .drop-zone {
-    padding: 32px 16px;
+  .recording-panel {
+    padding: 24px 16px;
   }
 
   .result-header {

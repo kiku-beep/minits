@@ -10,37 +10,40 @@
   <div class="container">
     <header>
       <h1>議事録ジェネレーター</h1>
-      <p class="subtitle">音声ファイルをアップロードすると、自動で議事録を作成します</p>
+      <p class="subtitle">会議を録音すると、自動で議事録を作成します</p>
     </header>
 
-    <!-- Upload Area -->
+    <!-- Recording Area -->
     <section id="upload-section" class="card">
-      <div id="drop-zone" class="drop-zone">
-        <div class="drop-zone-icon">🎙️</div>
-        <p class="drop-zone-text">音声ファイルをドラッグ＆ドロップ</p>
-        <p class="drop-zone-hint">または</p>
-        <label class="file-button">
-          ファイルを選択
-          <input type="file" id="file-input" accept="audio/*,video/mp4,video/webm,.m4a,.mp3,.wav,.ogg,.webm,.flac" hidden>
-        </label>
-        <p class="drop-zone-formats">対応形式: MP3, WAV, M4A, OGG, WebM, FLAC, MP4</p>
-      </div>
+      <div id="recording-panel" class="recording-panel">
+        <div class="recording-icon">🎙️</div>
+        <p class="recording-description">
+          システム音声（画面共有）とマイクを同時に録音し、議事録を自動生成します
+        </p>
 
-      <!-- File Preview -->
-      <div id="file-preview" class="file-preview hidden">
-        <div class="file-info">
-          <span class="file-icon">📄</span>
-          <div>
-            <p id="file-name" class="file-name"></p>
-            <p id="file-size" class="file-size"></p>
+        <div id="recording-status" class="recording-status hidden">
+          <span id="recording-indicator" class="recording-indicator"></span>
+          <span id="recording-timer" class="recording-timer">00:00:00</span>
+        </div>
+
+        <div id="level-meter-container" class="level-meter-container hidden">
+          <div class="level-meter-label">System</div>
+          <div class="level-meter-track">
+            <div id="level-meter-system" class="level-meter-bar"></div>
+          </div>
+          <div class="level-meter-label">Mic</div>
+          <div class="level-meter-track">
+            <div id="level-meter-mic" class="level-meter-bar"></div>
           </div>
         </div>
-        <button id="remove-file" class="remove-button" title="ファイルを削除">✕</button>
-      </div>
 
-      <button id="generate-btn" class="generate-button hidden" disabled>
-        議事録を生成
-      </button>
+        <button id="record-btn" class="record-button">録音を開始</button>
+        <button id="stop-btn" class="stop-button hidden">録音を停止して議事録を生成</button>
+
+        <p id="recording-hint" class="recording-hint">
+          「録音を開始」を押すと、画面共有の選択ダイアログが表示されます
+        </p>
+      </div>
     </section>
 
     <!-- Progress -->
@@ -57,7 +60,7 @@
         <h2 id="result-title"></h2>
         <div class="result-actions">
           <button id="copy-btn" class="action-button" title="コピー">📋 コピー</button>
-          <button id="reset-btn" class="action-button" title="新しいファイル">🔄 新規</button>
+          <button id="reset-btn" class="action-button" title="新しい録音">🔄 新しい録音</button>
         </div>
       </div>
 

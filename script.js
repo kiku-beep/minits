@@ -1,11 +1,12 @@
 // --- DOM Elements ---
-const dropZone = document.getElementById("drop-zone");
-const fileInput = document.getElementById("file-input");
-const filePreview = document.getElementById("file-preview");
-const fileName = document.getElementById("file-name");
-const fileSize = document.getElementById("file-size");
-const removeFile = document.getElementById("remove-file");
-const generateBtn = document.getElementById("generate-btn");
+const recordBtn = document.getElementById("record-btn");
+const stopBtn = document.getElementById("stop-btn");
+const recordingStatus = document.getElementById("recording-status");
+const recordingTimer = document.getElementById("recording-timer");
+const levelMeterContainer = document.getElementById("level-meter-container");
+const levelMeterSystem = document.getElementById("level-meter-system");
+const levelMeterMic = document.getElementById("level-meter-mic");
+const recordingHint = document.getElementById("recording-hint");
 const uploadSection = document.getElementById("upload-section");
 const progressSection = document.getElementById("progress-section");
 const progressBar = document.getElementById("progress-bar");
@@ -24,86 +25,218 @@ const errorSection = document.getElementById("error-section");
 const errorText = document.getElementById("error-text");
 const errorRetry = document.getElementById("error-retry");
 
-let selectedFile = null;
+// --- State ---
+let mediaRecorder = null;
+let recordedChunks = [];
+let displayStream = null;
+let micStream = null;
+let audioContext = null;
+let timerInterval = null;
+let recordingStartTime = null;
+let levelAnimationId = null;
+let systemAnalyser = null;
+let micAnalyser = null;
 let lastTranscript = "";
 let lastMinutes = null;
 
 // --- Audio Processing Constants ---
 const TARGET_SAMPLE_RATE = 16000;
-const CHUNK_DURATION_S = 120; // 2 minutes per chunk
-// 2min * 16kHz * 2bytes (int16) + 44 (WAV header) ≈ 3.84MB — fits in Netlify Function limit
-const SMALL_FILE_THRESHOLD = 4.5 * 1024 * 1024; // Files under 4.5MB sent directly
+const CHUNK_DURATION_S = 120;
 
-// --- File Upload ---
-dropZone.addEventListener("click", () => fileInput.click());
-dropZone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  dropZone.classList.add("drag-over");
-});
-dropZone.addEventListener("dragleave", () => {
-  dropZone.classList.remove("drag-over");
-});
-dropZone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  dropZone.classList.remove("drag-over");
-  if (e.dataTransfer.files.length > 0) {
-    selectFile(e.dataTransfer.files[0]);
-  }
-});
-fileInput.addEventListener("change", () => {
-  if (fileInput.files.length > 0) {
-    selectFile(fileInput.files[0]);
-  }
-});
-
-removeFile.addEventListener("click", clearFile);
-generateBtn.addEventListener("click", startGeneration);
+// --- Event Listeners ---
+recordBtn.addEventListener("click", startRecording);
+stopBtn.addEventListener("click", stopRecording);
 copyBtn.addEventListener("click", copyResult);
 resetBtn.addEventListener("click", resetAll);
-errorRetry.addEventListener("click", startGeneration);
-
-function selectFile(file) {
-  selectedFile = file;
-  fileName.textContent = file.name;
-  fileSize.textContent = formatFileSize(file.size);
-  dropZone.classList.add("hidden");
-  filePreview.classList.remove("hidden");
-  generateBtn.classList.remove("hidden");
-  generateBtn.disabled = false;
-}
-
-function clearFile() {
-  selectedFile = null;
-  fileInput.value = "";
-  dropZone.classList.remove("hidden");
-  filePreview.classList.add("hidden");
-  generateBtn.classList.add("hidden");
-}
-
-function formatFileSize(bytes) {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-}
+errorRetry.addEventListener("click", resetAll);
 
 // ============================================================
-// Audio Processing: Decode → Resample → Chunk → WAV Encode
+// Recording
 // ============================================================
 
-async function decodeAudioFile(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
+async function startRecording() {
   try {
-    const decoded = await audioCtx.decodeAudioData(arrayBuffer);
-    return decoded;
-  } finally {
-    await audioCtx.close();
+    // 1. Get display/system audio
+    displayStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: true,
+    });
+
+    // Discard video track immediately
+    displayStream.getVideoTracks().forEach((t) => t.stop());
+
+    // Check if system audio was shared
+    if (displayStream.getAudioTracks().length === 0) {
+      displayStream.getTracks().forEach((t) => t.stop());
+      throw new Error(
+        "システム音声が共有されていません。画面共有ダイアログで「タブの音声を共有」にチェックを入れてください。"
+      );
+    }
+
+    // 2. Get microphone
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // 3. Mix with Web Audio API
+    audioContext = new AudioContext();
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
+    const systemSource = audioContext.createMediaStreamSource(displayStream);
+    const micSource = audioContext.createMediaStreamSource(micStream);
+    const destination = audioContext.createMediaStreamDestination();
+
+    // Analysers for level meters
+    systemAnalyser = audioContext.createAnalyser();
+    systemAnalyser.fftSize = 256;
+    micAnalyser = audioContext.createAnalyser();
+    micAnalyser.fftSize = 256;
+
+    systemSource.connect(systemAnalyser);
+    systemAnalyser.connect(destination);
+    micSource.connect(micAnalyser);
+    micAnalyser.connect(destination);
+
+    // 4. MediaRecorder on mixed stream
+    recordedChunks = [];
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+    mediaRecorder = new MediaRecorder(destination.stream, { mimeType });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: mimeType });
+      processRecordedAudio(blob);
+    };
+    mediaRecorder.onerror = (e) => {
+      console.error("MediaRecorder error:", e);
+      stopRecording();
+      showError("録音中にエラーが発生しました。");
+    };
+
+    // Handle user clicking "Stop sharing" in browser chrome
+    displayStream.getAudioTracks()[0].onended = () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        stopRecording();
+      }
+    };
+
+    mediaRecorder.start(1000);
+
+    // 5. Update UI
+    recordBtn.classList.add("hidden");
+    stopBtn.classList.remove("hidden");
+    recordingStatus.classList.remove("hidden");
+    levelMeterContainer.classList.remove("hidden");
+    recordingHint.classList.add("hidden");
+    startTimer();
+    startLevelMeters();
+  } catch (err) {
+    cleanupStreams();
+    if (err.name === "NotAllowedError") {
+      return;
+    }
+    showError(err.message || "録音の開始に失敗しました。");
+    uploadSection.classList.add("hidden");
+    errorSection.classList.remove("hidden");
   }
 }
 
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+  }
+  stopTimer();
+  stopLevelMeters();
+  cleanupStreams();
+
+  stopBtn.classList.add("hidden");
+  recordingStatus.classList.add("hidden");
+  levelMeterContainer.classList.add("hidden");
+}
+
+function cleanupStreams() {
+  if (displayStream) {
+    displayStream.getTracks().forEach((t) => t.stop());
+    displayStream = null;
+  }
+  if (micStream) {
+    micStream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+  }
+  if (audioContext && audioContext.state !== "closed") {
+    audioContext.close();
+    audioContext = null;
+  }
+  systemAnalyser = null;
+  micAnalyser = null;
+}
+
+// ============================================================
+// Timer
+// ============================================================
+
+function startTimer() {
+  recordingStartTime = Date.now();
+  timerInterval = setInterval(updateTimer, 1000);
+  updateTimer();
+}
+
+function updateTimer() {
+  const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+  const h = String(Math.floor(elapsed / 3600)).padStart(2, "0");
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
+  const s = String(elapsed % 60).padStart(2, "0");
+  recordingTimer.textContent = `${h}:${m}:${s}`;
+}
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+// ============================================================
+// Level Meters
+// ============================================================
+
+function startLevelMeters() {
+  function updateLevels() {
+    if (systemAnalyser) {
+      const data = new Uint8Array(systemAnalyser.frequencyBinCount);
+      systemAnalyser.getByteFrequencyData(data);
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      levelMeterSystem.style.width = Math.min(100, (avg / 128) * 100) + "%";
+    }
+    if (micAnalyser) {
+      const data = new Uint8Array(micAnalyser.frequencyBinCount);
+      micAnalyser.getByteFrequencyData(data);
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      levelMeterMic.style.width = Math.min(100, (avg / 128) * 100) + "%";
+    }
+    levelAnimationId = requestAnimationFrame(updateLevels);
+  }
+  updateLevels();
+}
+
+function stopLevelMeters() {
+  if (levelAnimationId) {
+    cancelAnimationFrame(levelAnimationId);
+    levelAnimationId = null;
+  }
+  if (levelMeterSystem) levelMeterSystem.style.width = "0%";
+  if (levelMeterMic) levelMeterMic.style.width = "0%";
+}
+
+// ============================================================
+// Audio Processing: Resample → Chunk → WAV Encode
+// ============================================================
+
 function resampleToMono16k(audioBuffer) {
-  // Get mono channel (average all channels)
   const numChannels = audioBuffer.numberOfChannels;
   const length = audioBuffer.length;
   const mono = new Float32Array(length);
@@ -115,7 +248,6 @@ function resampleToMono16k(audioBuffer) {
     }
   }
 
-  // Resample to 16kHz using linear interpolation
   const srcRate = audioBuffer.sampleRate;
   if (srcRate === TARGET_SAMPLE_RATE) {
     return mono;
@@ -163,17 +295,16 @@ function encodeWAV(samples) {
   view.setUint32(4, 36 + numSamples * 2, true);
   writeStr(8, "WAVE");
   writeStr(12, "fmt ");
-  view.setUint32(16, 16, true);           // subchunk1 size
-  view.setUint16(20, 1, true);            // PCM
-  view.setUint16(22, 1, true);            // mono
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, TARGET_SAMPLE_RATE, true);
-  view.setUint32(28, TARGET_SAMPLE_RATE * 2, true); // byte rate
-  view.setUint16(32, 2, true);            // block align
-  view.setUint16(34, 16, true);           // bits per sample
+  view.setUint32(28, TARGET_SAMPLE_RATE * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
   writeStr(36, "data");
   view.setUint32(40, numSamples * 2, true);
 
-  // Float32 → Int16
   for (let i = 0; i < numSamples; i++) {
     const s = Math.max(-1, Math.min(1, samples[i]));
     view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
@@ -183,64 +314,63 @@ function encodeWAV(samples) {
 }
 
 // ============================================================
-// Generation Pipeline
+// Processing Pipeline
 // ============================================================
 
-async function startGeneration() {
-  if (!selectedFile) return;
-
+async function processRecordedAudio(blob) {
   showProgress();
   hideError();
 
   try {
-    let transcript;
-
-    if (selectedFile.size <= SMALL_FILE_THRESHOLD) {
-      // Small file: send directly without chunking
-      setProgress(10, "文字起こし中...");
-      transcript = await transcribeBlob(selectedFile, selectedFile.name);
-    } else {
-      // Large file: decode, chunk, and process sequentially
-      setProgress(5, "音声ファイルを読み込み中...");
-      const audioBuffer = await decodeAudioFile(selectedFile);
-
-      setProgress(10, "音声データを処理中...");
-      const samples = resampleToMono16k(audioBuffer);
-      const chunks = splitIntoChunks(samples);
-
-      const totalChunks = chunks.length;
-      const transcriptParts = [];
-
-      for (let i = 0; i < totalChunks; i++) {
-        const pct = 10 + Math.round((i / totalChunks) * 60);
-        setProgress(pct, `文字起こし中... (${i + 1}/${totalChunks})`);
-
-        const wavBlob = encodeWAV(chunks[i]);
-        const partText = await transcribeBlob(wavBlob, `chunk_${i}.wav`);
-        if (partText.trim()) {
-          transcriptParts.push(partText.trim());
-        }
-      }
-
-      transcript = transcriptParts.join("\n");
+    if (blob.size === 0) {
+      throw new Error("録音データが空です。音声が正しく共有されていたか確認してください。");
     }
 
+    setProgress(5, "録音データを読み込み中...");
+    const arrayBuffer = await blob.arrayBuffer();
+    const decodeCtx = new AudioContext();
+
+    let audioBuffer;
+    try {
+      audioBuffer = await decodeCtx.decodeAudioData(arrayBuffer);
+    } finally {
+      await decodeCtx.close();
+    }
+
+    setProgress(10, "音声データを処理中...");
+    const samples = resampleToMono16k(audioBuffer);
+    const chunks = splitIntoChunks(samples);
+
+    const totalChunks = chunks.length;
+    const transcriptParts = [];
+
+    for (let i = 0; i < totalChunks; i++) {
+      const pct = 10 + Math.round((i / totalChunks) * 60);
+      setProgress(pct, `文字起こし中... (${i + 1}/${totalChunks})`);
+
+      const wavBlob = encodeWAV(chunks[i]);
+      const partText = await transcribeBlob(wavBlob, `chunk_${i}.wav`);
+      if (partText.trim()) {
+        transcriptParts.push(partText.trim());
+      }
+    }
+
+    const transcript = transcriptParts.join("\n");
+
     if (!transcript.trim()) {
-      throw new Error("音声を認識できませんでした。ファイルに音声が含まれているか確認してください。");
+      throw new Error("音声を認識できませんでした。システム音声とマイクが正しく入力されているか確認してください。");
     }
 
     lastTranscript = transcript;
 
-    // Generate minutes
     setProgress(75, "議事録を生成中...");
     const minutes = await generateMinutes(transcript);
     lastMinutes = minutes;
 
     setProgress(95, "完了！");
     setTimeout(() => showResult(minutes, transcript), 300);
-
   } catch (err) {
-    console.error("Generation failed:", err);
+    console.error("Processing failed:", err);
     showError(err.message || "処理中にエラーが発生しました。");
   }
 }
@@ -300,7 +430,6 @@ function showResult(minutes, transcript) {
 
   resultTitle.textContent = minutes.title || "会議メモ";
 
-  // Summary
   const summary = minutes.summary || "";
   if (summary) {
     resultSummary.innerHTML = `<h3>要約</h3><p>${escapeHtml(summary)}</p>`;
@@ -309,7 +438,6 @@ function showResult(minutes, transcript) {
     resultSummary.classList.add("hidden");
   }
 
-  // Agenda
   const agenda = minutes.agenda || [];
   if (agenda.length > 0) {
     resultAgenda.innerHTML =
@@ -319,7 +447,6 @@ function showResult(minutes, transcript) {
     resultAgenda.classList.add("hidden");
   }
 
-  // Decisions
   const decisions = minutes.decisions || [];
   if (decisions.length > 0) {
     const items = decisions.map((d) => {
@@ -333,7 +460,6 @@ function showResult(minutes, transcript) {
     resultDecisions.classList.add("hidden");
   }
 
-  // Action Items
   const actions = minutes.action_items || [];
   if (actions.length > 0) {
     const rows = actions.map((a) => {
@@ -351,7 +477,6 @@ function showResult(minutes, transcript) {
     resultActionsList.classList.add("hidden");
   }
 
-  // Discussion Points
   const discussion = minutes.discussion_points || [];
   if (discussion.length > 0) {
     const items = discussion.map((p) => {
@@ -364,11 +489,9 @@ function showResult(minutes, transcript) {
     resultDiscussion.classList.add("hidden");
   }
 
-  // Transcript
   transcriptText.textContent = transcript;
 }
 
-// --- Copy ---
 function copyResult() {
   if (!lastMinutes) return;
 
@@ -424,9 +547,18 @@ function copyResult() {
   });
 }
 
-// --- Reset ---
 function resetAll() {
-  clearFile();
+  cleanupStreams();
+  stopTimer();
+  stopLevelMeters();
+
+  recordBtn.classList.remove("hidden");
+  stopBtn.classList.add("hidden");
+  recordingStatus.classList.add("hidden");
+  levelMeterContainer.classList.add("hidden");
+  recordingHint.classList.remove("hidden");
+  recordingTimer.textContent = "00:00:00";
+
   uploadSection.classList.remove("hidden");
   progressSection.classList.add("hidden");
   resultSection.classList.add("hidden");
@@ -434,9 +566,10 @@ function resetAll() {
   progressBar.style.width = "0%";
   lastTranscript = "";
   lastMinutes = null;
+  recordedChunks = [];
+  mediaRecorder = null;
 }
 
-// --- Error ---
 function showError(message) {
   progressSection.classList.add("hidden");
   errorSection.classList.remove("hidden");
@@ -447,7 +580,6 @@ function hideError() {
   errorSection.classList.add("hidden");
 }
 
-// --- Utility ---
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
