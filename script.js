@@ -1,5 +1,7 @@
 // --- DOM Elements ---
 const recordBtn = document.getElementById("record-btn");
+const recordingButtons = document.getElementById("recording-buttons");
+const pauseBtn = document.getElementById("pause-btn");
 const stopBtn = document.getElementById("stop-btn");
 const recordingStatus = document.getElementById("recording-status");
 const recordingTimer = document.getElementById("recording-timer");
@@ -36,6 +38,7 @@ let micStream = null;
 let audioContext = null;
 let timerInterval = null;
 let recordingStartTime = null;
+let pausedElapsed = 0;
 let levelAnimationId = null;
 let systemAnalyser = null;
 let micAnalyser = null;
@@ -48,6 +51,7 @@ const CHUNK_DURATION_S = 120;
 
 // --- Event Listeners ---
 recordBtn.addEventListener("click", startRecording);
+pauseBtn.addEventListener("click", togglePause);
 stopBtn.addEventListener("click", stopRecording);
 copyBtn.addEventListener("click", copyResult);
 resetBtn.addEventListener("click", resetAll);
@@ -106,7 +110,7 @@ async function startRecording() {
       systemAnalyser.connect(destination);
 
       displayStream.getAudioTracks()[0].onended = () => {
-        if (mediaRecorder && mediaRecorder.state === "recording") {
+        if (mediaRecorder && (mediaRecorder.state === "recording" || mediaRecorder.state === "paused")) {
           stopRecording();
         }
       };
@@ -136,7 +140,8 @@ async function startRecording() {
 
     // 3. Update UI
     recordBtn.classList.add("hidden");
-    stopBtn.classList.remove("hidden");
+    recordingButtons.classList.remove("hidden");
+    pauseBtn.textContent = "⏸ 一時停止";
     recordingStatus.classList.remove("hidden");
     recordingHint.classList.add("hidden");
     systemAudioToggle.disabled = true;
@@ -165,16 +170,36 @@ async function startRecording() {
 }
 
 function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
+  if (mediaRecorder && (mediaRecorder.state === "recording" || mediaRecorder.state === "paused")) {
     mediaRecorder.stop();
   }
   stopTimer();
   stopLevelMeters();
   cleanupStreams();
 
-  stopBtn.classList.add("hidden");
+  recordingButtons.classList.add("hidden");
   recordingStatus.classList.add("hidden");
   levelMeterContainer.classList.add("hidden");
+}
+
+function togglePause() {
+  if (!mediaRecorder) return;
+
+  if (mediaRecorder.state === "recording") {
+    mediaRecorder.pause();
+    pausedElapsed += Math.floor((Date.now() - recordingStartTime) / 1000);
+    stopTimer();
+    stopLevelMeters();
+    pauseBtn.textContent = "▶ 再開";
+    document.querySelector(".recording-indicator").style.animationPlayState = "paused";
+  } else if (mediaRecorder.state === "paused") {
+    mediaRecorder.resume();
+    recordingStartTime = Date.now();
+    timerInterval = setInterval(updateTimer, 1000);
+    startLevelMeters();
+    pauseBtn.textContent = "⏸ 一時停止";
+    document.querySelector(".recording-indicator").style.animationPlayState = "running";
+  }
 }
 
 function cleanupStreams() {
@@ -199,13 +224,14 @@ function cleanupStreams() {
 // ============================================================
 
 function startTimer() {
+  pausedElapsed = 0;
   recordingStartTime = Date.now();
   timerInterval = setInterval(updateTimer, 1000);
   updateTimer();
 }
 
 function updateTimer() {
-  const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+  const elapsed = pausedElapsed + Math.floor((Date.now() - recordingStartTime) / 1000);
   const h = String(Math.floor(elapsed / 3600)).padStart(2, "0");
   const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
   const s = String(elapsed % 60).padStart(2, "0");
@@ -572,7 +598,7 @@ function resetAll() {
   stopLevelMeters();
 
   recordBtn.classList.remove("hidden");
-  stopBtn.classList.add("hidden");
+  recordingButtons.classList.add("hidden");
   recordingStatus.classList.add("hidden");
   levelMeterContainer.classList.add("hidden");
   recordingHint.classList.remove("hidden");

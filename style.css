@@ -134,7 +134,7 @@ header h1 {
   transition: width 0.08s linear;
 }
 
-/* Record / Stop Buttons */
+/* Record / Stop / Pause Buttons */
 .record-button {
   display: inline-block;
   padding: 14px 40px;
@@ -152,9 +152,30 @@ header h1 {
   background: var(--accent-hover);
 }
 
+.recording-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.pause-button {
+  padding: 14px 32px;
+  background: #ff9500;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.pause-button:hover {
+  background: #e68600;
+}
+
 .stop-button {
-  display: inline-block;
-  padding: 14px 40px;
+  padding: 14px 32px;
   background: var(--error);
   color: white;
   border: none;
